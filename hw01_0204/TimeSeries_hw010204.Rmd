@@ -1,0 +1,164 @@
+---
+title: "HW01"
+author: "Group 7 : Yifan CAI, Meng-Wei Wu, Chi-en Hwang, Yashi Tiwari, Parina Kolhe"
+date: "2023-02-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r 00, include = FALSE}
+library('dplyr')
+library("tsibble")
+library('forecast')
+library('fpp3')
+library('ggplot2')
+library('ggfortify')
+library('fable')
+library('tsibbledata')
+library('fpp2')
+library('rio')
+library('gridExtra')
+library('seasonal')
+```
+
+### Q1
+The USgas package contains data on the demand for natural gas in the US.
+#### a). Install the USgas package.
+```{r 01}
+library('USgas')
+```
+#### b). Create a tsibble from us_total with year as the index and state as the key.
+```{r 02}
+df <- us_total %>% as_tsibble(index = year,key = state)
+head(df)
+```
+#### c). Plot the annual natural gas consumption by state for the New England area (comprising the states of Maine, Vermont, New Hampshire, Massachusetts, Connecticut and Rhode Island).
+```{r 03}
+NewEngland_Gas <- df %>%
+  select(year, state, y) %>%
+  filter(state %in% c('Maine','Vermont','New Hampshire','Massachusetts','Connecticut','Rhode Island'))
+
+#options(scipen = 999)
+NewEngland_Gas %>%
+  autoplot(y) +
+  labs(title = 'Annual Natural Gas Consumption by State' ,
+       subtitle = 'New England area',
+       y = 'Gas Consumption',
+       x = 'Year')
+```
+
+### Q2 Consider the last five years of the Gas data from aus_production.
+
+#### a). Plot the time series. Can you identify seasonal fluctuations and/or a trend-cycle?
+```{r 04}
+head(aus_production)
+gas <- tail(aus_production, 5*4) %>% 
+  select(Gas)
+gas %>%
+  autoplot(Gas)
+gas %>%
+  gg_season(Gas)
+```
+
+<br>
+**Answer : ** The gas production starts with low production at Q1 and increases continuously through Q2,Q3 to highest level and drops back to lowest level at Q4. The trend of gas production has been increasing over the years from 2005 to 2010. 
+
+#### b). Use classical_decomposition with type=multiplicative to calculate the trend-cycle and seasonal indices.
+```{r 05}
+#Classical multiplicative decomposition
+gas_cmd <- gas %>%
+  model(classical_decomposition(Gas, type = "multiplicative")) %>%
+  components()
+
+#Plot
+gas %>%
+  model(classical_decomposition(Gas, type = "multiplicative")) %>%
+  components() %>%
+  autoplot() +
+  labs(y = "Gas Production",
+       x = "Quarter",
+       title = "Classical multiplicative decomposition of gas production")
+
+#Calculate seasonal circle and trend circle
+Seasonal_circle = mean(gas_cmd$seasonal)
+Trend_circle = mean(gas_cmd$trend, na.rm = TRUE)
+cat(" The calculated seasonality is ", Seasonal_circle, " and the trend is", Trend_circle)
+```
+
+#### c). Do the results support the graphical interpretation from part a?
+**Answer : ** Yes, the results in part b support the graphical interpretation from part a.
+From the classical multiplicative decomposition graphs, the trend graph does shows an increasing trend over the years. The seasonal graph also shows an obvious seasonality with peaks at around summer of each year.
+
+#### d). Compute and plot the seasonally adjusted data.
+```{r 07}
+#Seasonally adjusted data
+gas_cmd$season_adjust
+
+#Seasonally adjusted plot
+gas_cmd %>%
+  ggplot(aes(x = Quarter)) +
+  geom_line(aes(y = Gas, colour = "Data")) +
+  geom_line(aes(y = season_adjust, colour = "Seasonally Adjusted")) +
+  geom_line(aes(y = trend, colour = "Trend")) +
+  labs(y = "",title = "Classical multiplicative decomposition of gas production") +
+  scale_colour_manual(values = c("gray", "blue", "red"),
+                      breaks = c("Data", "Seasonally Adjusted", "Trend")
+  )
+```
+
+#### e). Change one observation to be an outlier (e.g., add 300 to one observation), and recompute the seasonally adjusted data. What is the effect of the outlier?
+```{r 08}
+gas_copy <- gas
+gas_copy$Gas[10] <- gas_copy$Gas[10]+300
+
+gas_copy %>%
+  model(classical_decomposition(Gas,type = "multiplicative")) %>%
+  components() %>%
+  autoplot() + 
+  ggtitle("Classical multiplicative decomposition of gas production with outlier (middle) ")
+
+gas_copy %>%
+  model(classical_decomposition(Gas,type = "multiplicative")) %>%
+  components() %>%
+  ggplot(aes(x = Quarter)) +
+  geom_line(aes(y = Gas, colour = "Data")) +
+  geom_line(aes(y = season_adjust, colour = "Seasonally Adjusted")) +
+  geom_line(aes(y = trend, colour = "Trend")) +
+  labs(y = "", title = "Classical multiplicative decomposition of gas production with outlier (middle) ") +
+  scale_colour_manual(values = c("gray", "blue", "red"),
+                      breaks = c("Data", "Seasonally Adjusted", "Trend")
+  )
+
+```
+<br>
+**Answer : ** The outlier at the middle of time series data does results in a spike in seasonally adjusted data and it makes seasonally adjusted data like the original data without seasonally adjusted. It also causes a spike in trend data around the outlier but the remaining data still shows the increasing trend like the trend identified in the previous plot.  
+
+
+#### f). Does it make any difference if the outlier is near the end rather than in the middle of the time series?
+```{r 09}
+gas_copy01 <- gas
+gas_copy01$Gas[20] <- gas_copy01$Gas[20]+300
+
+gas_copy01 %>%
+  model(classical_decomposition(Gas,type = "multiplicative")) %>%
+  components() %>%
+  autoplot() + 
+  ggtitle("Classical multiplicative decomposition of gas production with outlier (end)")
+
+gas_copy01 %>%
+  model(classical_decomposition(Gas,type = "multiplicative")) %>%
+  components() %>%
+  ggplot(aes(x = Quarter)) +
+  geom_line(aes(y = Gas, colour = "Data")) +
+  geom_line(aes(y = season_adjust,colour = "Seasonally Adjusted")) +
+  geom_line(aes(y = trend, colour = "Trend")) +
+  labs(y = "",title = "Classical multiplicative decomposition of gas production with outlier (end)") +
+  scale_colour_manual(values = c("gray", "blue", "red"),
+                      breaks = c("Data", "Seasonally Adjusted", "Trend")
+  )
+```
+<br>
+**Answer : ** The outlier at the end of time series data does not effect the seasonal data and the trend of data, but it does show an spike at the end of the data.
