@@ -1,0 +1,135 @@
+---
+title: "Homework 02"
+author: "Crystal, Ian, Vivian, Yashi, Parina"
+date: "2023-03-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### R Markdown
+```{r}
+library(dplyr)
+library(fable)
+library(tsibble)
+library(tsibbledata)
+library(fabletools)
+library(ggplot2)
+library(forecast)
+library(tidyverse)
+library(gridExtra)
+library('kableExtra')
+library('knitr')
+library(fpp3)
+```
+
+### Q1 For your retail time series (from Exercise 8 in Section 2.10):
+```{r}
+#Monthly Australian retail data is provided in aus_retail. Select one of the time series as follows (but choose your own seed value):
+set.seed(12345678)
+myseries <- aus_retail |>
+  filter(`Series ID` == sample(aus_retail$`Series ID`,1))
+
+# a. Create a training dataset consisting of observations before 2011 using
+myseries_train <- myseries |>
+  filter(year(Month) < 2011)
+
+# b.Check that your data have been split appropriately by producing the following plot.
+autoplot(myseries, Turnover) +
+  autolayer(myseries_train, Turnover, colour = "red")
+
+# c.Fit a seasonal naïve model using SNAIVE() applied to your training data (myseries_train).
+fit <- myseries_train |>
+  model(SNAIVE(Turnover ~ lag(12)))
+
+# d.Check the residuals.
+fit |> gg_tsresiduals()
+#Do the residuals appear to be uncorrelated and normally distributed?
+#Answer : The residuals are auto-correlated and not normally distributed. 
+
+#e. Produce forecasts for the test data
+fc <- fit %>%
+  forecast(new_data = anti_join(myseries, myseries_train))
+fc %>% autoplot(myseries)
+
+
+#f.Compare the accuracy of your forecasts against the actual values.
+fit |> accuracy()
+fc |> accuracy(myseries)
+
+insample = fit %>% fabletools::accuracy() %>% select(MAE, RMSE, MAPE, MASE, RMSSE)
+outofsample = fc %>% fabletools::accuracy(myseries) %>% select( MAE, RMSE, MAPE, MASE, RMSSE)
+
+# Gather the results in a single table from in-sample vs. forecast
+df_accuracy = rbind(insample, outofsample) 
+row.names(df_accuracy) = c("In Sample", "Out of Sample")
+
+df_accuracy %>% 
+  kable(digits = 2, caption="Accuracy InSample vs Out of Sample" ) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+#g. How sensitive are the accuracy measures to the amount of training data used?
+# Answer : The training set is using the most recent data as opposed to the whole set in this case. More recent data more produced more accurate forecast.
+```
+
+
+### Q3 A classic example of a non-stationary series are stock prices. Plot the daily closing prices for Amazon stock (contained in gafa_stock), along with the ACF and PACF. Explain how each plot shows that the series is non-stationary and should be differenced.
+```{r}
+amazon <- gafa_stock %>%
+  filter(Symbol == "AMZN")
+
+autoplot <- amazon %>% 
+  autoplot(Close) +
+  labs(title="Daily Closing Stock Price (Amazon) ")
+autoplot 
+
+acf <- amazon %>%
+  ACF(Close) %>%
+  autoplot() + labs(title="Correlation of Daily Closing Stock Price (Amazon) ")
+acf
+
+pacf <- amazon %>%
+  PACF(Close) %>%
+  autoplot() + labs(title="Partial Autocorrelation Daily Closing Stock Price (Amazon) ")
+pacf
+```
+**Comment :** <br>
+Based on above plots, we can find a clear trend in the data. This can also be identified from ACF plot, there is a slow decrease as the lags increase, which suggests a clear trend. Therefore, the series is non-stationary. Additionally, the large initial spike in the PACF plot also indicates that these data is not stationary, therefore it should be differenced to make it stationary.
+
+
+### Q4  Consider the number of Snowshoe Hare furs traded by the Hudson Bay Company between 1845 and 1935 (data set pelt).
+```{r}
+#a.Produce a time plot of the time series.
+hare <- pelt %>% 
+  select("Year", "Hare")
+
+pelt %>% 
+  select("Year", "Hare") %>% 
+  autoplot(.vars=Hare) +
+  labs(title = "Hare Trades") +
+  theme(plot.title = element_text(hjust = 0.5))
+#b.Assume you decide to fit the following model: yt=c+ϕ1yt−1+ϕ2yt−2+ϕ3yt−3+ϕ4yt−4+εt, where εt is a white noise series. What sort of ARIMA model is this (i.e., what are p , d, and q)?
+fit15b <- pelt %>%
+  model(ARIMA(Hare)) %>%
+  report(fit15b)
+
+#c. By examining the ACF and PACF of the data, explain why this model is appropriate.
+gg_tsdisplay(hare, plot_type='partial')
+#Answer :  The ACF shows decreasing autocorrelation and PACF shows that lags 1 and 2 are above the bounds.
+
+#d. The last five values of the series are given below: The estimated parameters are c=30993 , ϕ1=0.82 , ϕ2=−0.29 , ϕ3=−0.01 , and ϕ4=−0.22. Without using the forecast() function, calculate forecasts for the next three years (1936–1939).
+hare1 = 30993 + 19520 + 0.82*(19250-82110) - 0.29*(82110-89760) - 0.01*(89760-81660) - 0.22*(81660-15760)
+hare2 = hare1 + 0.82*(hare1 - 19250) - 0.29*(19250-82110) - 0.01*(82110-89760) - 0.22*(89760-81660)
+hare3 = hare2 + 0.82*(hare2-hare1) - 0.29*(hare1-19250) - 0.01*(19250-82110) - 0.22*(82110-89760)
+c(hare1, hare2, hare3)
+
+#e.Now fit the model in R and obtain the forecasts using forecast(). 
+hare_fc <- hare %>% 
+  model(ARIMA(Hare))
+hare_fc %>% 
+  forecast(h=3)
+report(hare_fc)
+```
+
